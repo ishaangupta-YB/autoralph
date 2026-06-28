@@ -13,6 +13,7 @@ introduced. Phases map onto the commits in this repository's history.
 | [5](./phase-5-board.md) | Kanban board | HTTP + SSE server, dashboard UI |
 | [6](./phase-6-cli-demo.md) | CLI & demo | Flag parsing, run modes, scripted demo |
 | [7](./phase-7-testing.md) | Testing & verification | Unit + e2e suites, CI green |
+| [8](./phase-8-dashboard.md) | Next.js dashboard | Standalone Kanban UI, proxy + demo, CI |
 
 ## Global constraints (all phases)
 
