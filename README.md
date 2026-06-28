@@ -136,6 +136,23 @@ Each run is a column; each iteration is a card that moves through
 `running -> committed / discarded / repair / aborted`, alongside live token
 totals and a rolling log.
 
+### Optional Next.js dashboard
+
+The built-in board is dependency-free and needs no build step. For a richer,
+polished view there is also a standalone Next.js dashboard in [`dashboard/`](./dashboard)
+that proxies the same `/api/state` and `/api/events` endpoints and renders a
+four-column Kanban with run summaries and a streaming event log. It runs on port
+`4317` and can also replay a self-contained demo without a live CLI:
+
+```sh
+cd dashboard
+npm install
+AUTORALPH_DASHBOARD_DEMO=1 npm run dev   # preview with demo data
+# or, against a live run: npm run dev (proxies AUTORALPH_BOARD_URL)
+```
+
+See [`dashboard/README.md`](./dashboard/README.md) for details.
+
 ## Run metadata
 
 Each run stores its state under `.autoralph/runs/<runId>/`
