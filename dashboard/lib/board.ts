@@ -6,19 +6,10 @@
  */
 
 export type RunStatus =
-  | "idle"
-  | "running"
-  | "completed"
-  | "stopped"
-  | "aborted";
+  "idle" | "running" | "completed" | "stopped" | "aborted";
 
 export type IterationStatus =
-  | "queued"
-  | "running"
-  | "committed"
-  | "discarded"
-  | "repair"
-  | "aborted";
+  "queued" | "running" | "committed" | "discarded" | "repair" | "aborted";
 
 export type StopReason =
   | "max-iterations"
@@ -88,10 +79,42 @@ export interface BoardSnapshot {
   startedAt: number;
 }
 
+/**
+ * History row mirroring the CLI's `RunHistorySummary` (`src/board/store.ts`),
+ * served by `GET /api/history`. A lightweight projection of `RunView` plus a
+ * `live` flag marking runs still active in the board process.
+ */
+export interface RunHistorySummary {
+  runId: string;
+  objective: string;
+  agent: string;
+  status: RunStatus;
+  stopReason?: StopReason;
+  branch: string;
+  currentIteration: number;
+  maxIterations?: number;
+  usage: TokenUsage;
+  commitCount: number;
+  successCount: number;
+  failCount: number;
+  startedAt: number;
+  endedAt?: number;
+  live: boolean;
+  savedAt?: number;
+}
+
+/** Full run state + logs, served by `GET /api/history?runId=<id>`. */
+export interface PersistedRun {
+  run: RunView;
+  logs: BoardLogEntry[];
+  savedAt: number;
+}
+
 /** Base URL of the running CLI board server the dashboard proxies to. */
 export function boardBaseUrl(): string {
   return (
-    process.env.AUTORALPH_BOARD_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:7654"
+    process.env.AUTORALPH_BOARD_URL?.replace(/\/$/, "") ??
+    "http://127.0.0.1:7654"
   );
 }
 
