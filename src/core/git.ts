@@ -5,17 +5,22 @@ import { resolve } from "node:path";
 import { appendDebugLog, serializeError } from "./logger.js";
 
 /**
- * Canonical absolute path for comparison. `git worktree list` reports the
- * realpath (symlinks resolved), so on platforms where the temp dir is a
- * symlink (e.g. macOS `/var` -> `/private/var`) a plain `resolve()` would not
- * match. Fall back to `resolve()` when the path does not exist on disk yet.
+ * Canonical absolute path for comparison. `git worktree list` reports a
+ * normalized realpath, which differs from the raw input on several platforms:
+ * macOS resolves the `/var` -> `/private/var` symlink, and Windows expands 8.3
+ * short names (e.g. `RUNNER~1` -> `runneradmin`) and may differ in slash style
+ * and drive-letter case. `realpathSync.native` canonicalizes all of these via
+ * the OS; we additionally lower-case on case-insensitive platforms. Falls back
+ * to `resolve()` when the path does not exist on disk yet.
  */
 function canonicalPath(path: string): string {
+  let out: string;
   try {
-    return realpathSync(resolve(path));
+    out = realpathSync.native(resolve(path));
   } catch {
-    return resolve(path);
+    out = resolve(path);
   }
+  return process.platform === "win32" ? out.toLowerCase() : out;
 }
 
 /**
