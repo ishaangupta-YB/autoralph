@@ -110,3 +110,95 @@ describe("BoardServer", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("BoardServer control plane", () => {
+  it("reports read-only capabilities without a controller", async () => {
+    server = new BoardServer({ hub: buildHub(), port: 0 });
+    const url = await server.start();
+    const caps = await fetch(`${url}/api/control`).then((r) => r.json());
+    expect(caps.canLaunch).toBe(false);
+    expect(caps.agents).toEqual([]);
+    expect(caps.liveRuns).toContain("srv-run");
+  });
+
+  it("rejects start when control is disabled", async () => {
+    server = new BoardServer({ hub: buildHub(), port: 0 });
+    const url = await server.start();
+    const res = await fetch(`${url}/api/control`, {
+      method: "POST",
+      body: JSON.stringify({ action: "start", objective: "do it" }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("launches a run through the controller and lists its agents", async () => {
+    const launched: string[] = [];
+    server = new BoardServer({
+      hub: buildHub(),
+      port: 0,
+      controller: {
+        agents: ["claude", "opencode"],
+        launch: async (req) => {
+          launched.push(req.objective);
+          return { runId: "new-run" };
+        },
+      },
+    });
+    const url = await server.start();
+
+    const caps = await fetch(`${url}/api/control`).then((r) => r.json());
+    expect(caps.canLaunch).toBe(true);
+    expect(caps.agents).toEqual(["claude", "opencode"]);
+
+    const res = await fetch(`${url}/api/control`, {
+      method: "POST",
+      body: JSON.stringify({ action: "start", objective: "build a feature" }),
+    });
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ ok: true, runId: "new-run" });
+    expect(launched).toEqual(["build a feature"]);
+  });
+
+  it("requires an objective to start a run", async () => {
+    server = new BoardServer({
+      hub: buildHub(),
+      port: 0,
+      controller: { agents: [], launch: async () => ({ runId: "x" }) },
+    });
+    const url = await server.start();
+    const res = await fetch(`${url}/api/control`, {
+      method: "POST",
+      body: JSON.stringify({ action: "start", objective: "  " }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("stops a live run and 404s an unknown one", async () => {
+    server = new BoardServer({ hub: buildHub(), port: 0 });
+    const url = await server.start();
+
+    const ok = await fetch(`${url}/api/control`, {
+      method: "POST",
+      body: JSON.stringify({ action: "stop", runId: "srv-run" }),
+    });
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).ok).toBe(true);
+
+    const missing = await fetch(`${url}/api/control`, {
+      method: "POST",
+      body: JSON.stringify({ action: "force-stop", runId: "ghost" }),
+    });
+    expect(missing.status).toBe(404);
+  });
+
+  it("rejects an invalid JSON body", async () => {
+    server = new BoardServer({ hub: buildHub(), port: 0 });
+    const url = await server.start();
+    const res = await fetch(`${url}/api/control`, {
+      method: "POST",
+      body: "{not json",
+    });
+    expect(res.status).toBe(400);
+  });
+});

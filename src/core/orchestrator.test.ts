@@ -168,6 +168,100 @@ describe("Orchestrator failure handling", () => {
   });
 });
 
+describe("Orchestrator backoff configuration", () => {
+  it("grows the delay by the configured factor and respects the cap", async () => {
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    const agent = new SimulationAgent({
+      steps: [
+        { throwRetryable: "server_is_overloaded" },
+        { throwRetryable: "server_is_overloaded" },
+        success("after backoff", "ok.txt"),
+      ],
+    });
+    const orch = orchestrator(agent, {
+      limits: { maxIterations: 3 },
+      sleep,
+      backoffBaseMs: 100,
+      backoffFactor: 3,
+      maxBackoffMs: 250,
+    });
+    await orch.run();
+    expect(sleep.mock.calls.map((c) => c[0])).toEqual([100, 250]);
+  });
+
+  it("aborts sooner with a lower maxConsecutiveFailures", async () => {
+    const fail: SimulationStep = {
+      output: {
+        success: false,
+        summary: "nope",
+        key_changes_made: [],
+        key_learnings: [],
+      },
+    };
+    const agent = new SimulationAgent({
+      steps: [fail, fail, fail],
+      onExhausted: "repeat-last",
+    });
+    const orch = orchestrator(agent, {
+      limits: { maxIterations: 10 },
+      maxConsecutiveFailures: 1,
+    });
+    const view = await orch.run();
+    expect(view.stopReason).toBe("consecutive-failures");
+    expect(view.failCount).toBe(1);
+  });
+});
+
+describe("Orchestrator max-duration", () => {
+  it("completes with max-duration when the wall-clock budget elapses", async () => {
+    const agent: Agent = {
+      name: "slow",
+      run: (_p, _c, options) =>
+        new Promise<AgentResult>((_resolve, reject) => {
+          options?.signal?.addEventListener("abort", () =>
+            reject(new Error("Agent was aborted")),
+          );
+        }),
+    };
+    const orch = orchestrator(agent, {
+      limits: { maxIterations: 5, maxDurationMs: 20 },
+    });
+    const view = await orch.run();
+    expect(view.status).toBe("completed");
+    expect(view.stopReason).toBe("max-duration");
+  });
+});
+
+describe("Orchestrator resume", () => {
+  it("seeds counters from a prior run and continues numbering", async () => {
+    const agent = new SimulationAgent({
+      steps: [success("never runs", "x.txt")],
+      onExhausted: "repeat-last",
+    });
+    const orch = orchestrator(agent, {
+      limits: { maxIterations: 2 },
+      resumeState: {
+        currentIteration: 2,
+        usage: {
+          inputTokens: 10,
+          outputTokens: 20,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+        },
+        commitCount: 2,
+        successCount: 2,
+        failCount: 0,
+      },
+    });
+    const view = await orch.run();
+    // Already at the iteration cap, so it stops without running the agent.
+    expect(view.stopReason).toBe("max-iterations");
+    expect(view.currentIteration).toBe(2);
+    expect(view.commitCount).toBe(2);
+    expect(view.usage.inputTokens).toBe(10);
+  });
+});
+
 describe("Orchestrator token cap", () => {
   it("completes with max-tokens once the budget is exceeded", async () => {
     const agent = new SimulationAgent({

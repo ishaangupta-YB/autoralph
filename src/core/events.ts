@@ -10,6 +10,7 @@ export type IterationStatus =
 export type StopReason =
   | "max-iterations"
   | "max-tokens"
+  | "max-duration"
   | "stop-condition"
   | "consecutive-failures"
   | "permanent-error"

@@ -2,7 +2,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-export type AgentName = "claude" | "opencode";
+/** Every selectable agent identifier; the single source of truth for choices. */
+export const AGENT_NAMES = ["claude", "opencode"] as const;
+
+export type AgentName = (typeof AGENT_NAMES)[number];
 
 /** Default non-standard port for the real-time Kanban board. */
 export const DEFAULT_BOARD_PORT = 7654;
@@ -27,6 +30,25 @@ export interface BoardConfig {
   host: string;
 }
 
+/** Defaults for the loop's failure handling and exponential backoff. */
+export const DEFAULT_RETRY: RetryConfig = {
+  maxConsecutiveFailures: 3,
+  backoffBaseMs: 60_000,
+  backoffFactor: 2,
+  maxBackoffMs: 900_000,
+};
+
+export interface RetryConfig {
+  /** Consecutive failures tolerated before the run aborts. */
+  maxConsecutiveFailures: number;
+  /** Base backoff delay in ms for retryable provider errors. */
+  backoffBaseMs: number;
+  /** Exponential growth factor applied per consecutive retry. */
+  backoffFactor: number;
+  /** Hard cap on any single backoff delay in ms. */
+  maxBackoffMs: number;
+}
+
 export interface CloudflareConfig {
   accountId?: string;
   apiToken?: string;
@@ -40,7 +62,10 @@ export interface Config {
   fallbackModels: string[];
   maxIterations?: number;
   maxTokens?: number;
+  /** Wall-clock budget in ms after which the run stops. */
+  maxDurationMs?: number;
   board: BoardConfig;
+  retry: RetryConfig;
   cloudflare: CloudflareConfig;
   /** Absolute path or bare binary name to use instead of the default. */
   agentPathOverride?: string;
@@ -54,7 +79,9 @@ export interface PartialConfigFile {
   fallbackModels?: string[];
   maxIterations?: number;
   maxTokens?: number;
+  maxDurationMs?: number;
   board?: Partial<BoardConfig>;
+  retry?: Partial<RetryConfig>;
   cloudflare?: CloudflareConfig;
   agentPathOverride?: string;
   agentArgsOverride?: string[];
@@ -78,6 +105,7 @@ export function defaultConfig(): Config {
       port: DEFAULT_BOARD_PORT,
       host: DEFAULT_BOARD_HOST,
     },
+    retry: { ...DEFAULT_RETRY },
     cloudflare: {},
   };
 }
@@ -112,11 +140,30 @@ export function loadConfig(
       overrides.fallbackModels ?? file.fallbackModels ?? base.fallbackModels,
     maxIterations: overrides.maxIterations ?? file.maxIterations,
     maxTokens: overrides.maxTokens ?? file.maxTokens,
+    maxDurationMs: overrides.maxDurationMs ?? file.maxDurationMs,
     board: {
       enabled:
         overrides.board?.enabled ?? file.board?.enabled ?? base.board.enabled,
       port: overrides.board?.port ?? file.board?.port ?? base.board.port,
       host: overrides.board?.host ?? file.board?.host ?? base.board.host,
+    },
+    retry: {
+      maxConsecutiveFailures:
+        overrides.retry?.maxConsecutiveFailures ??
+        file.retry?.maxConsecutiveFailures ??
+        base.retry.maxConsecutiveFailures,
+      backoffBaseMs:
+        overrides.retry?.backoffBaseMs ??
+        file.retry?.backoffBaseMs ??
+        base.retry.backoffBaseMs,
+      backoffFactor:
+        overrides.retry?.backoffFactor ??
+        file.retry?.backoffFactor ??
+        base.retry.backoffFactor,
+      maxBackoffMs:
+        overrides.retry?.maxBackoffMs ??
+        file.retry?.maxBackoffMs ??
+        base.retry.maxBackoffMs,
     },
     cloudflare: {
       accountId:

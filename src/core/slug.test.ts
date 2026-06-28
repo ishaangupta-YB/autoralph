@@ -19,8 +19,14 @@ describe("slugify", () => {
 });
 
 describe("makeRunId", () => {
-  it("combines a slug with a timestamp suffix", () => {
+  it("combines a slug with a timestamp and random suffix", () => {
     const id = makeRunId("My Objective");
-    expect(id).toMatch(/^my-objective-\d{8}-\d{6}$/);
+    expect(id).toMatch(/^my-objective-\d{8}-\d{6}-[a-z0-9]{1,4}$/);
+  });
+  it("produces unique ids for rapid successive calls", () => {
+    const ids = new Set(
+      Array.from({ length: 50 }, () => makeRunId("same objective")),
+    );
+    expect(ids.size).toBe(50);
   });
 });

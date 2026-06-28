@@ -14,6 +14,7 @@ export type IterationStatus =
 export type StopReason =
   | "max-iterations"
   | "max-tokens"
+  | "max-duration"
   | "stop-condition"
   | "consecutive-failures"
   | "permanent-error"
@@ -108,6 +109,18 @@ export interface PersistedRun {
   run: RunView;
   logs: BoardLogEntry[];
   savedAt: number;
+}
+
+/**
+ * Control-plane capabilities, mirroring the CLI board's `GET /api/control`
+ * (`src/board/server.ts`). `canLaunch` is false on a board started without run
+ * control (and in demo mode); `agents` lists the launchable agent names and
+ * `liveRuns` the ids of runs still active in the board process.
+ */
+export interface ControlCapabilities {
+  canLaunch: boolean;
+  agents: string[];
+  liveRuns: string[];
 }
 
 /** Base URL of the running CLI board server the dashboard proxies to. */
