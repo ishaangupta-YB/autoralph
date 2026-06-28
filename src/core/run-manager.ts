@@ -77,11 +77,14 @@ export class RunManager {
   launch(objective: string, overrides: LaunchOverrides = {}): LaunchResult {
     const { cwd } = this.opts;
     const useWorktree = overrides.worktree === true;
-    const useCurrentBranch = !useWorktree && overrides.useCurrentBranch === true;
+    const useCurrentBranch =
+      !useWorktree && overrides.useCurrentBranch === true;
     const runId = makeRunId(objective);
     const branch = useCurrentBranch
       ? getCurrentBranch(cwd)
-      : this.uniqueBranch(overrides.branch ?? `autoralph/${slugify(objective)}`);
+      : this.uniqueBranch(
+          overrides.branch ?? `autoralph/${slugify(objective)}`,
+        );
 
     let agentCwd = cwd;
     let worktreePath: string | undefined;
