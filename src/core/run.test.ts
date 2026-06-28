@@ -39,7 +39,7 @@ describe("setupRun", () => {
       { cwd: repo.dir, encoding: "utf-8" },
     ).trim();
     expect(readFileSync(join(repo.dir, exclude), "utf-8")).toContain(
-      ".autoralph/runs/",
+      ".autoralph/",
     );
   });
 
@@ -54,7 +54,7 @@ describe("setupRun", () => {
     const content = readFileSync(join(repo.dir, exclude), "utf-8");
     const occurrences = content
       .split("\n")
-      .filter((l) => l.trim() === ".autoralph/runs/").length;
+      .filter((l) => l.trim() === ".autoralph/").length;
     expect(occurrences).toBe(1);
   });
 });

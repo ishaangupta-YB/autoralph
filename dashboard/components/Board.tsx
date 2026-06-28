@@ -9,8 +9,10 @@ import {
   totalTokens,
 } from "@/lib/board";
 import { COLUMNS, fmtCount, fmtTime, runColor } from "@/lib/format";
+import HistoryView from "@/components/History";
 
 type ConnState = "connecting" | "live" | "down";
+type View = "live" | "history";
 
 const EMPTY: BoardSnapshot = { runs: [], logs: [], startedAt: Date.now() };
 
@@ -23,6 +25,7 @@ export default function Dashboard({ boardUrl, demo }: DashboardProps) {
   const [snapshot, setSnapshot] = useState<BoardSnapshot>(EMPTY);
   const [conn, setConn] = useState<ConnState>("connecting");
   const [boardError, setBoardError] = useState<string | null>(null);
+  const [view, setView] = useState<View>("live");
   const reveal = useReveal();
 
   useEffect(() => {
@@ -41,7 +44,9 @@ export default function Dashboard({ boardUrl, demo }: DashboardProps) {
     source.addEventListener("board-error", (event) => {
       try {
         const { message } = JSON.parse((event as MessageEvent).data);
-        setBoardError(typeof message === "string" ? message : "board unreachable");
+        setBoardError(
+          typeof message === "string" ? message : "board unreachable",
+        );
       } catch {
         setBoardError("board unreachable");
       }
@@ -76,54 +81,90 @@ export default function Dashboard({ boardUrl, demo }: DashboardProps) {
 
       <main className="main">
         <div className="page-head">
-          <h1>Agent runs, live.</h1>
+          <h1>{view === "live" ? "Agent runs, live." : "Run history."}</h1>
           <p>
-            Every iteration, commit, token budget, and provider fallback as the
-            orchestrator drives each agent toward its objective.
+            {view === "live"
+              ? "Every iteration, commit, token budget, and provider fallback as the orchestrator drives each agent toward its objective."
+              : "Every run the board has seen — persisted to disk, so it survives restarts. Open one to replay its iterations and event log."}
           </p>
           {demo ? <span className="demo-flag">demo data</span> : null}
         </div>
 
-        {boardError && !hasRuns ? (
-          <div className="notice">
-            <p>
-              No board connected ({boardError}). Start a run with{" "}
-              <code>autoralph &quot;objective&quot; --board-port 7654</code>, or
-              preview the UI with{" "}
-              <code>AUTORALPH_DASHBOARD_DEMO=1 npm run dev</code>.
-            </p>
-          </div>
-        ) : null}
+        <div className="tabs" role="tablist" aria-label="Board view">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "live"}
+            className={`tab ${view === "live" ? "tab--on" : ""}`}
+            onClick={() => setView("live")}
+          >
+            Live
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "history"}
+            className={`tab ${view === "history" ? "tab--on" : ""}`}
+            onClick={() => setView("history")}
+          >
+            History
+          </button>
+        </div>
 
-        {hasRuns ? (
+        {view === "history" ? (
+          <HistoryView demo={demo} />
+        ) : (
           <>
-            <section className="reveal" ref={reveal} aria-label="Run summary">
-              <div className="section-head">
-                <h2>Runs</h2>
-                <span className="label">
-                  {runs.length} {runs.length === 1 ? "run" : "runs"}
-                </span>
+            {boardError && !hasRuns ? (
+              <div className="notice">
+                <p>
+                  No board connected ({boardError}). Start a run with{" "}
+                  <code>autoralph &quot;objective&quot; --board-port 7654</code>
+                  , or preview the UI with{" "}
+                  <code>AUTORALPH_DASHBOARD_DEMO=1 npm run dev</code>.
+                </p>
               </div>
-              <div className="runs">
-                {runs.map((run, i) => (
-                  <RunCard key={run.runId} run={run} color={runColor(i)} />
-                ))}
-              </div>
-            </section>
+            ) : null}
 
-            <section className="reveal" ref={reveal} aria-label="Kanban board">
-              <div className="section-head">
-                <h2>Iterations</h2>
-                <span className="label">live kanban</span>
-              </div>
-              <BoardColumns runs={runs} />
+            {hasRuns ? (
+              <>
+                <section
+                  className="reveal"
+                  ref={reveal}
+                  aria-label="Run summary"
+                >
+                  <div className="section-head">
+                    <h2>Runs</h2>
+                    <span className="label">
+                      {runs.length} {runs.length === 1 ? "run" : "runs"}
+                    </span>
+                  </div>
+                  <div className="runs">
+                    {runs.map((run, i) => (
+                      <RunCard key={run.runId} run={run} color={runColor(i)} />
+                    ))}
+                  </div>
+                </section>
+
+                <section
+                  className="reveal"
+                  ref={reveal}
+                  aria-label="Kanban board"
+                >
+                  <div className="section-head">
+                    <h2>Iterations</h2>
+                    <span className="label">live kanban</span>
+                  </div>
+                  <BoardColumns runs={runs} />
+                </section>
+              </>
+            ) : null}
+
+            <section className="reveal" ref={reveal} aria-label="Event log">
+              <LogBand logs={logs} count={logs.length} />
             </section>
           </>
-        ) : null}
-
-        <section className="reveal" ref={reveal} aria-label="Event log">
-          <LogBand logs={logs} count={logs.length} />
-        </section>
+        )}
       </main>
 
       <footer className="foot">
@@ -151,7 +192,11 @@ function ConnBadge({ state }: { state: ConnState }) {
         ? "conn--down"
         : "conn--pulse";
   const text =
-    state === "live" ? "live" : state === "down" ? "disconnected" : "connecting";
+    state === "live"
+      ? "live"
+      : state === "down"
+        ? "disconnected"
+        : "connecting";
   return (
     <span className={`conn ${cls}`} role="status" aria-live="polite">
       <span className="conn__dot" aria-hidden="true" />
@@ -160,10 +205,13 @@ function ConnBadge({ state }: { state: ConnState }) {
   );
 }
 
-function RunCard({ run, color }: { run: RunView; color: string }) {
+export function RunCard({ run, color }: { run: RunView; color: string }) {
   const tokens = totalTokens(run.usage);
   const pct = run.maxIterations
-    ? Math.min(100, Math.round((run.currentIteration / run.maxIterations) * 100))
+    ? Math.min(
+        100,
+        Math.round((run.currentIteration / run.maxIterations) * 100),
+      )
     : run.status === "completed"
       ? 100
       : 0;
@@ -187,7 +235,10 @@ function RunCard({ run, color }: { run: RunView; color: string }) {
           label="iter"
         />
         <Metric value={String(run.commitCount)} label="commits" />
-        <Metric value={`${run.successCount}/${run.failCount}`} label="ok/fail" />
+        <Metric
+          value={`${run.successCount}/${run.failCount}`}
+          label="ok/fail"
+        />
         <Metric
           value={`${run.usage.estimated ? "~" : ""}${fmtCount(tokens)}`}
           label="tokens"
@@ -209,7 +260,7 @@ function RunCard({ run, color }: { run: RunView; color: string }) {
   );
 }
 
-function Metric({ value, label }: { value: string; label: string }) {
+export function Metric({ value, label }: { value: string; label: string }) {
   return (
     <div className="metric">
       <div className="metric__v">{value}</div>
@@ -218,7 +269,7 @@ function Metric({ value, label }: { value: string; label: string }) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status }: { status: string }) {
   return <span className={`badge badge--${status}`}>{status}</span>;
 }
 
@@ -227,7 +278,7 @@ interface BoardCard {
   color: string;
 }
 
-function BoardColumns({ runs }: { runs: RunView[] }) {
+export function BoardColumns({ runs }: { runs: RunView[] }) {
   const cards = useMemo<BoardCard[]>(() => {
     const all: BoardCard[] = [];
     runs.forEach((run, i) =>
@@ -298,7 +349,7 @@ function IterationCard({ card }: { card: BoardCard }) {
   );
 }
 
-function LogBand({
+export function LogBand({
   logs,
   count,
 }: {

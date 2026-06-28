@@ -86,4 +86,27 @@ describe("BoardServer", () => {
     const res = await fetch(`${url}/nope`);
     expect(res.status).toBe(404);
   });
+
+  it("lists run history and serves a single run by id", async () => {
+    server = new BoardServer({ hub: buildHub(), port: 0 });
+    const url = await server.start();
+
+    const history = await fetch(`${url}/api/history`).then((r) => r.json());
+    expect(history.runs.map((r: { runId: string }) => r.runId)).toContain(
+      "srv-run",
+    );
+
+    const detail = await fetch(`${url}/api/history?runId=srv-run`).then((r) =>
+      r.json(),
+    );
+    expect(detail.run.runId).toBe("srv-run");
+    expect(Array.isArray(detail.logs)).toBe(true);
+  });
+
+  it("returns 404 for an unknown history run", async () => {
+    server = new BoardServer({ hub: buildHub(), port: 0 });
+    const url = await server.start();
+    const res = await fetch(`${url}/api/history?runId=does-not-exist`);
+    expect(res.status).toBe(404);
+  });
 });
