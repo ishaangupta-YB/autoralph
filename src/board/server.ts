@@ -59,6 +59,26 @@ export class BoardServer {
       return;
     }
 
+    if (url === "/api/history" || url.startsWith("/api/history?")) {
+      const runId = new URL(url, `http://${this.host}`).searchParams.get(
+        "runId",
+      );
+      if (runId) {
+        const detail = this.hub.historyRun(runId);
+        if (!detail) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "run not found" }));
+          return;
+        }
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(detail));
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ runs: this.hub.history() }));
+      return;
+    }
+
     if (url === "/healthz") {
       res.writeHead(200, { "content-type": "text/plain" });
       res.end("ok");

@@ -22,7 +22,9 @@ export interface RunInfo {
 }
 
 const LOG_FILENAME = "autoralph.log";
-const RUN_METADATA_IGNORE = ".autoralph/runs/";
+// Ignore the whole metadata dir: per-run state under runs/ and the persisted
+// board history under history/ are both local-only and must stay untracked.
+const RUN_METADATA_IGNORE = ".autoralph/";
 
 /**
  * Keep run metadata out of version control by appending to the local
