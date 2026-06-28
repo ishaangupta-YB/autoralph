@@ -1,7 +1,22 @@
 import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { appendDebugLog, serializeError } from "./logger.js";
+
+/**
+ * Canonical absolute path for comparison. `git worktree list` reports the
+ * realpath (symlinks resolved), so on platforms where the temp dir is a
+ * symlink (e.g. macOS `/var` -> `/private/var`) a plain `resolve()` would not
+ * match. Fall back to `resolve()` when the path does not exist on disk yet.
+ */
+function canonicalPath(path: string): string {
+  try {
+    return realpathSync(resolve(path));
+  } catch {
+    return resolve(path);
+  }
+}
 
 /**
  * Every git call goes through {@link git}, which uses execFileSync with an argv
@@ -158,12 +173,13 @@ export function removeWorktree(path: string, cwd: string): void {
 export function worktreeExists(path: string, cwd: string): boolean {
   try {
     const list = git(["worktree", "list", "--porcelain"], cwd);
-    const resolved = resolve(path);
+    const resolved = canonicalPath(path);
     return list
       .split("\n")
       .filter((line) => line.startsWith("worktree "))
       .some(
-        (line) => resolve(line.slice("worktree ".length).trim()) === resolved,
+        (line) =>
+          canonicalPath(line.slice("worktree ".length).trim()) === resolved,
       );
   } catch {
     return false;
