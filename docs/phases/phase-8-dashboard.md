@@ -24,7 +24,8 @@ an optional, richer view that any deployment can run separately.
   `boardBaseUrl()` / `isDemoMode()` (env readers) and `totalTokens()`.
 - **`lib/demo.ts`** - a scripted two-agent timeline (commits, a discard, a
   retryable provider error + backoff, a Kimi fallback, `max-iterations` finish)
-  used when demo mode is on.
+  used when demo mode is on, plus `demoHistory()` / `demoHistoryRun()` that add
+  two finished archived runs so the History tab is previewable offline.
 - **`lib/format.ts`** - token/time formatting and the status -> column map.
 - **`app/api/state/route.ts`** - one-shot snapshot: demo snapshot when
   `AUTORALPH_DASHBOARD_DEMO=1`, otherwise `fetch(boardUrl/api/state)` with a
@@ -32,10 +33,16 @@ an optional, richer view that any deployment can run separately.
 - **`app/api/events/route.ts`** - SSE: replays the demo timeline frame-by-frame
   in demo mode, otherwise passes through the CLI board's SSE stream; emits an SSE
   `board-error` event rather than hard-failing when the board is unreachable.
+- **`app/api/history/route.ts`** - proxies the CLI's `/api/history` (list) and
+  `/api/history?runId=<id>` (one run's full state + logs), serving demo history
+  in demo mode and degrading to `connected: false` when the board is down.
 - **`components/Board.tsx`** - one `EventSource`, a live connection badge,
   run-summary cards (iter / commits / ok-fail / tokens + progress), the
   four-column Kanban, and a streaming event log. Reduced-motion aware; no motion
-  libraries.
+  libraries. Hosts the **Live / History** tab switch.
+- **`components/History.tsx`** - the History tab: a run list from `/api/history`
+  and a detail panel (opened per run via `key={runId}`) that replays the run's
+  iterations on the Kanban columns alongside its event log.
 - **Cobalt theme** (`app/globals.css`) - cool engineered paper, hairline
   structure, one electric-cobalt signal, code as the hero.
 
@@ -50,7 +57,7 @@ an optional, richer view that any deployment can run separately.
 ## Testing & verification
 
 - Vitest suites under `dashboard/tests/` (`format`, `board` env helpers, `demo`
-  timeline invariants).
+  timeline invariants, `history` demo list/detail).
 - A dedicated CI job (`.github/workflows/dashboard.yml`, paths-filtered on
   `dashboard/**`) runs `npm ci`, lint, typecheck, test, and build.
 
