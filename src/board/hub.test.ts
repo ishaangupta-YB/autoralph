@@ -1,9 +1,27 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
 
-import { BoardHub } from "./hub.js";
+import { BoardHub, type BoardLogEntry } from "./hub.js";
+import type { BoardStore, PersistedRun } from "./store.js";
 import type { Orchestrator } from "../core/orchestrator.js";
 import type { RunView } from "../core/events.js";
+
+/** In-memory store so history behaviour is testable without touching disk. */
+class MemoryStore implements BoardStore {
+  saves: PersistedRun[] = [];
+  private map = new Map<string, PersistedRun>();
+  save(run: RunView, logs: BoardLogEntry[]): void {
+    const entry: PersistedRun = { run, logs, savedAt: Date.now() };
+    this.saves.push(entry);
+    this.map.set(run.runId, entry);
+  }
+  load(runId: string): PersistedRun | undefined {
+    return this.map.get(runId);
+  }
+  list(): PersistedRun[] {
+    return [...this.map.values()];
+  }
+}
 
 function baseView(runId: string): RunView {
   return {
@@ -77,5 +95,51 @@ describe("BoardHub", () => {
       level: "warn",
       message: "heads up",
     });
+  });
+
+  it("persists each run update through the store with that run's logs", () => {
+    const store = new MemoryStore();
+    const hub = new BoardHub(store);
+    const orch = fakeOrchestrator(baseView("a"));
+    hub.register(orch);
+    (orch as unknown as EventEmitter).emit("log", {
+      level: "info",
+      message: "tick",
+    });
+
+    const saved = store.load("a");
+    expect(saved?.run.runId).toBe("a");
+    expect(saved?.logs.map((l) => l.message)).toContain("tick");
+  });
+
+  it("merges live runs over persisted history, newest-first", () => {
+    const store = new MemoryStore();
+    const past = baseView("past");
+    past.startedAt = 1;
+    past.status = "completed";
+    store.save(past, []);
+
+    const hub = new BoardHub(store);
+    const live = baseView("live");
+    live.startedAt = 10;
+    hub.register(fakeOrchestrator(live));
+
+    const history = hub.history();
+    expect(history.map((h) => h.runId)).toEqual(["live", "past"]);
+    expect(history.find((h) => h.runId === "live")?.live).toBe(true);
+    expect(history.find((h) => h.runId === "past")?.live).toBe(false);
+  });
+
+  it("returns a single run from memory, falling back to the store", () => {
+    const store = new MemoryStore();
+    store.save(baseView("archived"), [
+      { ts: 1, level: "info", message: "done", runId: "archived" },
+    ]);
+    const hub = new BoardHub(store);
+    hub.register(fakeOrchestrator(baseView("active")));
+
+    expect(hub.historyRun("active")?.run.runId).toBe("active");
+    expect(hub.historyRun("archived")?.logs[0]?.message).toBe("done");
+    expect(hub.historyRun("ghost")).toBeUndefined();
   });
 });

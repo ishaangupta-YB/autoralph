@@ -10,6 +10,7 @@ import { SimulationAgent } from "./agents/simulation.js";
 import { buildAgentOutputSchema, type Agent } from "./agents/types.js";
 import { BoardHub } from "./board/hub.js";
 import { BoardServer } from "./board/server.js";
+import { FileBoardStore } from "./board/store.js";
 import {
   bootstrapConfig,
   loadConfig,
@@ -85,8 +86,10 @@ function installSignalHandlers(orchestrator: Orchestrator): () => void {
 async function startBoard(
   options: RunCliOptions,
   config: ReturnType<typeof loadConfig>,
+  cwd: string,
 ): Promise<{ hub: BoardHub; server?: BoardServer; url?: string }> {
-  const hub = new BoardHub();
+  const store = new FileBoardStore(join(cwd, ".autoralph", "history"));
+  const hub = new BoardHub(store);
   if (options.board === false || !config.board.enabled) {
     return { hub };
   }
@@ -168,7 +171,7 @@ async function runObjective(
     commitMessagePrefix: options.commitPrefix,
   });
 
-  const { hub, server, url } = await startBoard(options, config);
+  const { hub, server, url } = await startBoard(options, config, cwd);
   hub.register(orchestrator);
 
   const removeSignals = installSignalHandlers(orchestrator);

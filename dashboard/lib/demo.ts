@@ -9,6 +9,8 @@ import type {
   BoardLogEntry,
   BoardSnapshot,
   IterationView,
+  PersistedRun,
+  RunHistorySummary,
   RunView,
   TokenUsage,
 } from "./board";
@@ -84,10 +86,7 @@ const OPENCODE_STEPS: Step[] = [
   },
 ];
 
-function emptyRun(
-  agent: "claude" | "opencode",
-  startedAt: number,
-): RunView {
+function emptyRun(agent: "claude" | "opencode", startedAt: number): RunView {
   return {
     runId: `demo-${agent}-${startedAt}`,
     objective:
@@ -226,4 +225,154 @@ export function demoTimeline(now = Date.now()): BoardSnapshot[] {
 export function demoSnapshot(now = Date.now()): BoardSnapshot {
   const frames = demoTimeline(now);
   return frames[frames.length - 1]!;
+}
+
+const HOUR = 60 * 60 * 1000;
+
+/**
+ * A couple of older, finished runs that only exist in "history" — they are not
+ * part of the live timeline. This makes the demo history view show that runs
+ * persist beyond the current session.
+ */
+function archivedRuns(now: number): PersistedRun[] {
+  const mk = (
+    runId: string,
+    agent: "claude" | "opencode",
+    objective: string,
+    status: RunView["status"],
+    stopReason: RunView["stopReason"],
+    iterations: number,
+    commits: number,
+    fails: number,
+    startedAt: number,
+  ): PersistedRun => {
+    const its: IterationView[] = Array.from({ length: iterations }, (_, i) => {
+      const committed = i < commits;
+      return {
+        id: i + 1,
+        iteration: i + 1,
+        agent,
+        status: committed ? "committed" : "discarded",
+        summary: committed ? `Step ${i + 1} landed` : `Step ${i + 1} reverted`,
+        changes: committed ? [`change ${i + 1}`] : [],
+        learnings: [],
+        usage: { ...PER_ITERATION },
+        error: committed ? undefined : "no net change",
+        startedAt: startedAt + i * 1000,
+        endedAt: startedAt + i * 1000 + 500,
+      };
+    });
+    return {
+      run: {
+        runId,
+        objective,
+        agent,
+        status,
+        stopReason,
+        branch: `autoralph/${runId}`,
+        baseCommit: "9f1c0d2",
+        currentIteration: iterations,
+        maxIterations: iterations,
+        usage: {
+          inputTokens: PER_ITERATION.inputTokens * iterations,
+          outputTokens: PER_ITERATION.outputTokens * iterations,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+        },
+        commitCount: commits,
+        successCount: commits,
+        failCount: fails,
+        consecutiveFailures: 0,
+        startedAt,
+        endedAt: startedAt + iterations * 1000 + 800,
+        iterations: its,
+      },
+      logs: [
+        { ts: startedAt, level: "info", message: "run started", runId },
+        {
+          ts: startedAt + iterations * 1000 + 800,
+          level: "info",
+          message: `run finished: ${stopReason}`,
+          runId,
+        },
+      ],
+      savedAt: startedAt + iterations * 1000 + 900,
+    };
+  };
+
+  return [
+    mk(
+      "demo-archive-auth",
+      "claude",
+      "Add OAuth login flow with tests",
+      "completed",
+      "objective-complete",
+      5,
+      5,
+      0,
+      now - 26 * HOUR,
+    ),
+    mk(
+      "demo-archive-perf",
+      "opencode",
+      "Profile and speed up the render path",
+      "aborted",
+      "consecutive-failures",
+      3,
+      1,
+      2,
+      now - 3 * HOUR,
+    ),
+  ];
+}
+
+function summarize(
+  run: RunView,
+  live: boolean,
+  savedAt?: number,
+): RunHistorySummary {
+  return {
+    runId: run.runId,
+    objective: run.objective,
+    agent: run.agent,
+    status: run.status,
+    stopReason: run.stopReason,
+    branch: run.branch,
+    currentIteration: run.currentIteration,
+    maxIterations: run.maxIterations,
+    usage: run.usage,
+    commitCount: run.commitCount,
+    successCount: run.successCount,
+    failCount: run.failCount,
+    startedAt: run.startedAt,
+    endedAt: run.endedAt,
+    live,
+    savedAt,
+  };
+}
+
+/** All runs the demo history exposes: the two timeline runs plus archived ones. */
+function demoPersistedRuns(now = Date.now()): PersistedRun[] {
+  const snapshot = demoSnapshot(now);
+  const fromTimeline: PersistedRun[] = snapshot.runs.map((run) => ({
+    run,
+    logs: snapshot.logs.filter((l) => l.runId === run.runId),
+    savedAt: run.endedAt ?? now,
+  }));
+  return [...fromTimeline, ...archivedRuns(now)];
+}
+
+/** Demo history list, newest-first, mirroring the CLI's `/api/history`. */
+export function demoHistory(now = Date.now()): RunHistorySummary[] {
+  return demoPersistedRuns(now)
+    .map((p) => summarize(p.run, p.run.status === "running", p.savedAt))
+    .sort((a, b) => b.startedAt - a.startedAt);
+}
+
+/** Demo detail for one run, mirroring `/api/history?runId=<id>`. */
+export function demoHistoryRun(
+  runId: string,
+  now = Date.now(),
+): PersistedRun | undefined {
+  return demoPersistedRuns(now).find((p) => p.run.runId === runId);
 }

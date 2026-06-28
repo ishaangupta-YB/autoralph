@@ -140,12 +140,22 @@ failure via `classifyProviderError`:
 - **`hub.ts`** subscribes to one or more orchestrators and keeps a
   `Map<runId, RunView>` plus a bounded log buffer. `snapshot()` returns all runs
   sorted by start time. Because each orchestrator is a separate run, the board
-  supports multi-agent orchestration natively, one column per run.
+  supports multi-agent orchestration natively, one column per run. On every
+  state/log/done event it also writes the run (with its logs) through an
+  optional `BoardStore`, and `history()` / `historyRun()` merge those persisted
+  runs with the live map (the live copy always wins).
+- **`store.ts`** defines the `BoardStore` interface and `FileBoardStore`, which
+  serializes each run to `.autoralph/history/<runId>.json` via a temp-file +
+  atomic `rename`, and reads them back newest-first (malformed files are
+  skipped). Persistence means run history survives a board restart; tests use an
+  in-memory store so they never touch disk.
 - **`server.ts`** is a zero-dependency `node:http` server. `GET /` serves the
   embedded UI; `GET /api/state` returns a JSON snapshot; `GET /api/events` is an
   SSE stream that emits a full snapshot on connect and on every hub update;
-  `GET /healthz` returns `ok`. SSE is chosen over websockets because data flows
-  strictly server -> browser, keeping the server dependency-free and
+  `GET /api/history` lists every run the hub knows about, and
+  `GET /api/history?runId=<id>` returns one run's full state and logs (404 if
+  unknown); `GET /healthz` returns `ok`. SSE is chosen over websockets because
+  data flows strictly server -> browser, keeping the server dependency-free and
   proxy-friendly. Binding to port `0` selects an ephemeral port (used by tests).
 - **`assets.ts`** embeds the dashboard (HTML/CSS/JS) as a string so the bundled
   CLI is fully self-contained: an `EventSource` consumes `/api/events` and
@@ -163,9 +173,13 @@ lockfile) that renders a richer Kanban view on port **4317**. It is a pure
 
 - `lib/board.ts` mirrors the view shapes from `src/core/events.ts`, so the two
   cannot silently diverge (a type mismatch fails `tsc`).
-- `app/api/state` and `app/api/events` proxy the CLI's `/api/state` and
-  `/api/events` so the browser only talks to the dashboard origin; on failure
-  they degrade gracefully (`connected: false`, or an SSE `board-error` event).
+- `app/api/state`, `app/api/events`, and `app/api/history` proxy the CLI's
+  matching endpoints so the browser only talks to the dashboard origin; on
+  failure they degrade gracefully (`connected: false`, or an SSE `board-error`
+  event).
+- A **History** tab (`components/History.tsx`) lists past runs from
+  `/api/history` and opens any one (`?runId=<id>`) to replay its iterations on
+  the Kanban columns alongside that run's event log.
 - `AUTORALPH_DASHBOARD_DEMO=1` swaps the proxy for a self-contained scripted
   timeline (`lib/demo.ts`), so the UI is previewable with no CLI running.
 - `AUTORALPH_BOARD_URL` (default `http://127.0.0.1:7654`) points it at a live
