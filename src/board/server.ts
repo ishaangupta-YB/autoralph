@@ -158,7 +158,10 @@ export class BoardServer {
         sendJson(res, 400, { error: "runId is required" });
         return;
       }
-      const stopped = this.hub.stopRun(body.runId, body.action === "force-stop");
+      const stopped = this.hub.stopRun(
+        body.runId,
+        body.action === "force-stop",
+      );
       sendJson(res, stopped ? 200 : 404, {
         ok: stopped,
         error: stopped ? undefined : "run not live",

@@ -162,7 +162,9 @@ export function worktreeExists(path: string, cwd: string): boolean {
     return list
       .split("\n")
       .filter((line) => line.startsWith("worktree "))
-      .some((line) => resolve(line.slice("worktree ".length).trim()) === resolved);
+      .some(
+        (line) => resolve(line.slice("worktree ".length).trim()) === resolved,
+      );
   } catch {
     return false;
   }

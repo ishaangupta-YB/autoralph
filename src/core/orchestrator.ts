@@ -250,7 +250,8 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
       while (true) {
         if (this.forceStop) return this.finish("stopped", "force-stop");
         if (this.stopRequested) return this.finish("stopped", "interrupt");
-        if (this.durationCapHit) return this.finish("completed", "max-duration");
+        if (this.durationCapHit)
+          return this.finish("completed", "max-duration");
 
         if (
           this.limits.maxIterations !== undefined &&

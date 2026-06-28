@@ -28,10 +28,7 @@ import {
   isWorkingTreeClean,
 } from "./core/git.js";
 import { Orchestrator } from "./core/orchestrator.js";
-import {
-  RunManager,
-  type LaunchOverrides,
-} from "./core/run-manager.js";
+import { RunManager, type LaunchOverrides } from "./core/run-manager.js";
 import { listRunConfigs, setupRun } from "./core/run.js";
 import { makeRunId } from "./core/slug.js";
 import type { RunView } from "./core/events.js";
@@ -168,7 +165,9 @@ function installSignalHandlers(hub: BoardHub): () => void {
 }
 
 function isAgentName(value: string | undefined): value is AgentName {
-  return value !== undefined && (AGENT_NAMES as readonly string[]).includes(value);
+  return (
+    value !== undefined && (AGENT_NAMES as readonly string[]).includes(value)
+  );
 }
 
 async function startBoard(
@@ -234,9 +233,7 @@ async function runObjectives(
 
   const removeSignals = installSignalHandlers(hub);
   try {
-    const views = await Promise.all(
-      launched.map((l) => l.orchestrator.run()),
-    );
+    const views = await Promise.all(launched.map((l) => l.orchestrator.run()));
     for (const view of views) printSummary(view, url);
     if (server) {
       process.stdout.write("  Board still live. Press Ctrl+C to exit.\n");
@@ -485,7 +482,10 @@ function buildProgram(): Command {
     .option("--fallback-models <list>", "comma-separated fallback model ids")
     .option("-i, --max-iterations <n>", "stop after N iterations")
     .option("-t, --max-tokens <n>", "stop after N total tokens")
-    .option("--max-duration <seconds>", "stop after N seconds of wall-clock time")
+    .option(
+      "--max-duration <seconds>",
+      "stop after N seconds of wall-clock time",
+    )
     .option("-s, --stop-when <text>", "natural-language stop condition")
     .option("-b, --branch <name>", "branch to create for the run")
     .option(
@@ -503,8 +503,14 @@ function buildProgram(): Command {
     .option("--board-port <n>", "board port (default 7654)")
     .option("--board-host <host>", "board host (default 127.0.0.1)")
     .option("--commit-prefix <text>", "commit message prefix")
-    .option("--max-failures <n>", "consecutive failures tolerated before aborting")
-    .option("--backoff-base <seconds>", "base backoff delay for retryable errors")
+    .option(
+      "--max-failures <n>",
+      "consecutive failures tolerated before aborting",
+    )
+    .option(
+      "--backoff-base <seconds>",
+      "base backoff delay for retryable errors",
+    )
     .option("--backoff-factor <n>", "exponential backoff growth factor")
     .option("--max-backoff <seconds>", "cap on any single backoff delay")
     .action(async (objectives: string[], options: RunCliOptions) => {
@@ -523,7 +529,9 @@ function buildProgram(): Command {
     .option("--keep-worktrees", "do not remove worktrees when the run finishes")
     .option("--board-port <n>", "board port (default 7654)")
     .option("--board-host <host>", "board host (default 127.0.0.1)")
-    .action((runId: string, options: RunCliOptions) => resumeRun(runId, options));
+    .action((runId: string, options: RunCliOptions) =>
+      resumeRun(runId, options),
+    );
 
   program
     .command("runs")
