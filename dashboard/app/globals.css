@@ -49,11 +49,11 @@
   --radius-md: 10px;
   --radius-lg: 14px;
 
-  --font-display: var(--font-space-grotesk), "Space Grotesk", system-ui,
-    sans-serif;
+  --font-display:
+    var(--font-space-grotesk), "Space Grotesk", system-ui, sans-serif;
   --font-body: var(--font-inter), "Inter", system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace,
-    monospace;
+  --font-mono:
+    var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
 
   --maxw: 1200px;
 }
@@ -677,5 +677,165 @@ a {
   }
   .bar__fill {
     transition: none;
+  }
+}
+
+/* ── Tabs (Live / History) ───────────────────────────────────────────── */
+.tabs {
+  display: inline-flex;
+  gap: var(--space-3xs);
+  padding: var(--space-3xs);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  background: var(--color-paper-2);
+  margin-bottom: var(--space-md);
+}
+.tab {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2xs) var(--space-sm);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+.tab:hover {
+  color: var(--color-ink);
+}
+.tab--on {
+  background: var(--color-paper);
+  color: var(--color-accent-strong);
+  box-shadow: 0 1px 2px oklch(0% 0 0 / 0.06);
+}
+
+.ghost-btn {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--color-muted);
+  background: transparent;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3xs) var(--space-2xs);
+  cursor: pointer;
+}
+.ghost-btn:hover {
+  color: var(--color-ink);
+  border-color: var(--color-rule-2);
+}
+
+/* ── Run history list ────────────────────────────────────────────────── */
+.history-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+.history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  background: var(--color-paper);
+  padding: var(--space-sm);
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+.history-row:hover {
+  border-color: var(--color-rule-2);
+  background: var(--color-paper-2);
+}
+.history-row--on {
+  border-color: var(--color-accent);
+  background: var(--color-accent-wash);
+}
+.history-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  min-width: 0;
+}
+.history-row__top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+}
+.history-row__agent {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--color-ink);
+  font-size: 0.95rem;
+}
+.history-row__obj {
+  font-size: 0.85rem;
+  color: var(--color-ink-2);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 52ch;
+}
+.history-row__when {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--color-muted);
+}
+.history-row__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(58px, 1fr));
+  gap: var(--space-2xs);
+  flex-shrink: 0;
+}
+.history-empty {
+  border: 1px dashed var(--color-rule-2);
+  border-radius: var(--radius-md);
+  background: var(--color-paper-2);
+  padding: var(--space-lg);
+  text-align: center;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+}
+
+/* ── Run detail panel ────────────────────────────────────────────────── */
+.detail {
+  margin-top: var(--space-lg);
+  border-top: 1px solid var(--color-rule);
+  padding-top: var(--space-md);
+}
+.detail__id {
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+.detail__obj {
+  font-size: 0.9rem;
+  color: var(--color-ink-2);
+  margin-bottom: var(--space-sm);
+}
+.detail__log {
+  margin-top: var(--space-md);
+}
+
+@media (max-width: 720px) {
+  .history-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .history-row__obj {
+    white-space: normal;
+    max-width: none;
   }
 }
