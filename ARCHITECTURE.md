@@ -154,6 +154,28 @@ failure via `classifyProviderError`:
 The default port is **7654** (`DEFAULT_BOARD_PORT`), a deliberately
 non-standard port, overridable with `--board-port` or config.
 
+## Optional Next.js dashboard (`dashboard/`)
+
+The embedded board is dependency-free and always available. `dashboard/` is a
+separate, optional [Next.js](https://nextjs.org) app (its own `package.json` and
+lockfile) that renders a richer Kanban view on port **4317**. It is a pure
+*consumer* of the CLI board, never a second source of truth:
+
+- `lib/board.ts` mirrors the view shapes from `src/core/events.ts`, so the two
+  cannot silently diverge (a type mismatch fails `tsc`).
+- `app/api/state` and `app/api/events` proxy the CLI's `/api/state` and
+  `/api/events` so the browser only talks to the dashboard origin; on failure
+  they degrade gracefully (`connected: false`, or an SSE `board-error` event).
+- `AUTORALPH_DASHBOARD_DEMO=1` swaps the proxy for a self-contained scripted
+  timeline (`lib/demo.ts`), so the UI is previewable with no CLI running.
+- `AUTORALPH_BOARD_URL` (default `http://127.0.0.1:7654`) points it at a live
+  board. `next.config.ts` pins the Turbopack root to `dashboard/` so the build
+  never walks up to the CLI's pnpm lockfile.
+
+It has its own CI job (`.github/workflows/dashboard.yml`: lint, typecheck, test,
+build) and its own Vitest suite under `dashboard/tests/`. See
+[`dashboard/README.md`](./dashboard/README.md).
+
 ## Configuration (`src/core/config.ts`)
 
 `loadConfig` merges, in increasing precedence: built-in defaults,
