@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { BoardHub, type BoardLogEntry } from "./hub.js";
 import type { BoardStore, PersistedRun } from "./store.js";
@@ -128,6 +128,28 @@ describe("BoardHub", () => {
     expect(history.map((h) => h.runId)).toEqual(["live", "past"]);
     expect(history.find((h) => h.runId === "live")?.live).toBe(true);
     expect(history.find((h) => h.runId === "past")?.live).toBe(false);
+  });
+
+  it("stops a live run gracefully or forcefully and reports live ids", () => {
+    const hub = new BoardHub();
+    const view = baseView("a");
+    const orch = fakeOrchestrator(view);
+    const stop = vi.fn();
+    const handleInterrupt = vi.fn();
+    (orch as unknown as { stop: () => void }).stop = stop;
+    (orch as unknown as { handleInterrupt: () => void }).handleInterrupt =
+      handleInterrupt;
+    hub.register(orch);
+
+    expect(hub.liveRunIds()).toEqual(["a"]);
+
+    expect(hub.stopRun("a", false)).toBe(true);
+    expect(handleInterrupt).toHaveBeenCalledTimes(1);
+
+    expect(hub.stopRun("a", true)).toBe(true);
+    expect(stop).toHaveBeenCalledTimes(1);
+
+    expect(hub.stopRun("missing", false)).toBe(false);
   });
 
   it("returns a single run from memory, falling back to the store", () => {

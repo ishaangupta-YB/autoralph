@@ -40,6 +40,7 @@ const MAX_LOGS = 200;
  */
 export class BoardHub extends EventEmitter<BoardHubEvents> {
   private runs = new Map<string, RunView>();
+  private orchestrators = new Map<string, Orchestrator>();
   private logs: BoardLogEntry[] = [];
   readonly startedAt = Date.now();
 
@@ -50,6 +51,7 @@ export class BoardHub extends EventEmitter<BoardHubEvents> {
   register(orchestrator: Orchestrator): void {
     const view = orchestrator.getView();
     this.runs.set(view.runId, view);
+    this.orchestrators.set(view.runId, orchestrator);
 
     orchestrator.on("state", (next) => {
       this.runs.set(next.runId, next);
@@ -113,6 +115,24 @@ export class BoardHub extends EventEmitter<BoardHubEvents> {
       return { run: live, logs: this.logsFor(runId), savedAt: Date.now() };
     }
     return this.store?.load(runId);
+  }
+
+  /**
+   * Request a live run to stop. `force` triggers an immediate force-stop
+   * (aborts the in-flight iteration); otherwise a graceful interrupt is sent.
+   * Returns false when no live orchestrator owns the runId.
+   */
+  stopRun(runId: string, force = false): boolean {
+    const orchestrator = this.orchestrators.get(runId);
+    if (!orchestrator) return false;
+    if (force) orchestrator.stop();
+    else orchestrator.handleInterrupt();
+    return true;
+  }
+
+  /** runIds of orchestrators currently registered (live this process). */
+  liveRunIds(): string[] {
+    return [...this.orchestrators.keys()];
   }
 
   pushLog(entry: BoardLogEntry): void {

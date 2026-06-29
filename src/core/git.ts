@@ -1,6 +1,27 @@
 import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { appendDebugLog, serializeError } from "./logger.js";
+
+/**
+ * Canonical absolute path for comparison. `git worktree list` reports a
+ * normalized realpath, which differs from the raw input on several platforms:
+ * macOS resolves the `/var` -> `/private/var` symlink, and Windows expands 8.3
+ * short names (e.g. `RUNNER~1` -> `runneradmin`) and may differ in slash style
+ * and drive-letter case. `realpathSync.native` canonicalizes all of these via
+ * the OS; we additionally lower-case on case-insensitive platforms. Falls back
+ * to `resolve()` when the path does not exist on disk yet.
+ */
+function canonicalPath(path: string): string {
+  let out: string;
+  try {
+    out = realpathSync.native(resolve(path));
+  } catch {
+    out = resolve(path);
+  }
+  return process.platform === "win32" ? out.toLowerCase() : out;
+}
 
 /**
  * Every git call goes through {@link git}, which uses execFileSync with an argv
@@ -120,6 +141,51 @@ export function branchExists(branchName: string, cwd: string): boolean {
   try {
     git(["rev-parse", "--verify", `refs/heads/${branchName}`], cwd);
     return true;
+  } catch {
+    return false;
+  }
+}
+
+export function checkoutBranch(branchName: string, cwd: string): void {
+  git(["checkout", branchName], cwd);
+}
+
+/**
+ * Create a detached worktree at {@link path} for parallel, isolated runs. Each
+ * worktree shares the repository's object store but has its own working tree
+ * and index, so concurrent runs never clobber one another's files. When
+ * {@link branch} does not yet exist it is created from {@link startPoint}
+ * (defaults to HEAD); otherwise the existing branch is checked out.
+ */
+export function addWorktree(
+  path: string,
+  branch: string,
+  cwd: string,
+  startPoint = "HEAD",
+): void {
+  const args = branchExists(branch, cwd)
+    ? ["worktree", "add", path, branch]
+    : ["worktree", "add", "-b", branch, path, startPoint];
+  git(args, cwd);
+}
+
+/** Remove a worktree directory (the branch and its commits are preserved). */
+export function removeWorktree(path: string, cwd: string): void {
+  git(["worktree", "remove", "--force", path], cwd);
+}
+
+/** True when {@link path} is registered as a worktree of the repo at {@link cwd}. */
+export function worktreeExists(path: string, cwd: string): boolean {
+  try {
+    const list = git(["worktree", "list", "--porcelain"], cwd);
+    const resolved = canonicalPath(path);
+    return list
+      .split("\n")
+      .filter((line) => line.startsWith("worktree "))
+      .some(
+        (line) =>
+          canonicalPath(line.slice("worktree ".length).trim()) === resolved,
+      );
   } catch {
     return false;
   }

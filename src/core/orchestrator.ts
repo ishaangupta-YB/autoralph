@@ -30,6 +30,8 @@ import type {
 export interface RunLimits {
   maxIterations?: number;
   maxTokens?: number;
+  /** Wall-clock budget in ms; the run stops once it is exceeded. */
+  maxDurationMs?: number;
   stopWhen?: string;
   push?: boolean;
 }
@@ -43,10 +45,25 @@ export interface OrchestratorParams {
   commitMessagePrefix?: string;
   /** Consecutive failures tolerated before aborting. */
   maxConsecutiveFailures?: number;
-  /** Backoff base in ms (exponential: base * 2^streak). Injectable for tests. */
+  /** Backoff base in ms (exponential: base * factor^streak). Injectable for tests. */
   backoffBaseMs?: number;
+  /** Exponential growth factor for backoff (default 2). */
+  backoffFactor?: number;
+  /** Upper bound on a single backoff delay in ms. */
+  maxBackoffMs?: number;
+  /** Seed counters when resuming a prior run so iteration numbering continues. */
+  resumeState?: ResumeState;
   /** Injectable sleep so tests do not actually wait. */
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+}
+
+/** Snapshot of prior progress used to continue (resume) an interrupted run. */
+export interface ResumeState {
+  currentIteration: number;
+  usage: TokenUsage;
+  commitCount: number;
+  successCount: number;
+  failCount: number;
 }
 
 function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -97,6 +114,8 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
   private commitMessagePrefix: string;
   private maxConsecutiveFailures: number;
   private backoffBaseMs: number;
+  private backoffFactor: number;
+  private maxBackoffMs: number;
   private sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
 
   private view: RunView;
@@ -106,6 +125,8 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
   private interruptCount = 0;
   private controller: AbortController | null = null;
   private tokenCapHit = false;
+  private durationCapHit = false;
+  private durationTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingCommitRepair: string | null = null;
 
   constructor(params: OrchestratorParams) {
@@ -118,7 +139,12 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
     this.commitMessagePrefix = params.commitMessagePrefix ?? "autoralph";
     this.maxConsecutiveFailures = params.maxConsecutiveFailures ?? 3;
     this.backoffBaseMs = params.backoffBaseMs ?? 60_000;
+    this.backoffFactor = params.backoffFactor ?? 2;
+    this.maxBackoffMs = params.maxBackoffMs ?? Number.POSITIVE_INFINITY;
     this.sleep = params.sleep ?? defaultSleep;
+
+    const resume = params.resumeState;
+    if (resume) this.usage = { ...resume.usage };
 
     this.view = {
       runId: this.runInfo.runId,
@@ -127,13 +153,13 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
       status: "idle",
       branch: safeBranch(this.cwd),
       baseCommit: this.runInfo.baseCommit,
-      currentIteration: 0,
+      currentIteration: resume?.currentIteration ?? 0,
       maxIterations: this.limits.maxIterations,
       maxTokens: this.limits.maxTokens,
-      usage: { ...EMPTY_USAGE },
-      commitCount: 0,
-      successCount: 0,
-      failCount: 0,
+      usage: resume ? { ...resume.usage } : { ...EMPTY_USAGE },
+      commitCount: resume?.commitCount ?? 0,
+      successCount: resume?.successCount ?? 0,
+      failCount: resume?.failCount ?? 0,
       consecutiveFailures: 0,
       startedAt: 0,
       iterations: [],
@@ -191,6 +217,10 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   private finish(status: RunView["status"], reason?: StopReason): RunView {
+    if (this.durationTimer) {
+      clearTimeout(this.durationTimer);
+      this.durationTimer = null;
+    }
     this.view.status = status;
     this.view.stopReason = reason;
     this.view.endedAt = Date.now();
@@ -212,6 +242,7 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
       limits: this.limits,
     });
     this.emitState();
+    this.armDurationCap();
 
     let backoffStreak = 0;
 
@@ -219,6 +250,8 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
       while (true) {
         if (this.forceStop) return this.finish("stopped", "force-stop");
         if (this.stopRequested) return this.finish("stopped", "interrupt");
+        if (this.durationCapHit)
+          return this.finish("completed", "max-duration");
 
         if (
           this.limits.maxIterations !== undefined &&
@@ -250,6 +283,9 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
         }
         if (outcome.kind === "aborted") {
           if (this.tokenCapHit) return this.finish("completed", "max-tokens");
+          if (this.durationCapHit) {
+            return this.finish("completed", "max-duration");
+          }
           return this.finish(
             "stopped",
             this.forceStop ? "force-stop" : "interrupt",
@@ -271,7 +307,10 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
           }
           if (outcome.kind === "retryable") {
             backoffStreak++;
-            const delay = this.backoffBaseMs * 2 ** (backoffStreak - 1);
+            const delay = Math.min(
+              this.maxBackoffMs,
+              this.backoffBaseMs * this.backoffFactor ** (backoffStreak - 1),
+            );
             this.emit("log", {
               level: "warn",
               message: `Retryable error; backing off ${Math.round(
@@ -297,6 +336,25 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
         appendDebugLog("agent:close-failed", { error: serializeError(error) });
       }
     }
+  }
+
+  /**
+   * Arm the wall-clock budget. When it elapses mid-iteration the current agent
+   * run is aborted (like the token cap); the loop then reports `max-duration`.
+   */
+  private armDurationCap(): void {
+    const budget = this.limits.maxDurationMs;
+    if (budget === undefined || budget <= 0) return;
+    this.durationTimer = setTimeout(() => {
+      this.durationCapHit = true;
+      this.emit("log", {
+        level: "warn",
+        message: `Max duration reached (${Math.round(budget / 1000)}s); stopping.`,
+      });
+      this.controller?.abort();
+    }, budget);
+    // Do not keep the event loop alive solely for this timer.
+    this.durationTimer.unref?.();
   }
 
   private startCard(iteration: number): void {
@@ -461,7 +519,12 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
   }
 
   private handleThrown(iteration: number, error: unknown): IterationOutcome {
-    if (this.controller?.signal.aborted || this.forceStop || this.tokenCapHit) {
+    if (
+      this.controller?.signal.aborted ||
+      this.forceStop ||
+      this.tokenCapHit ||
+      this.durationCapHit
+    ) {
       // Mid-iteration abort: discard the partial work.
       if (!this.pendingCommitRepair) {
         try {

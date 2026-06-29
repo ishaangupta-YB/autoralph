@@ -58,6 +58,31 @@ describe("loadConfig", () => {
     const config = loadConfig({}, configPath);
     expect(config.agent).toBe(defaultConfig().agent);
   });
+
+  it("defaults retry parameters", () => {
+    const config = loadConfig({}, configPath);
+    expect(config.retry).toEqual(defaultConfig().retry);
+  });
+
+  it("merges retry params with overrides > file > defaults", () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify({ retry: { backoffBaseMs: 5000, backoffFactor: 4 } }),
+    );
+    const config = loadConfig(
+      { retry: { backoffFactor: 10 }, maxDurationMs: 90_000 },
+      configPath,
+    );
+    // File value retained where no override is given.
+    expect(config.retry.backoffBaseMs).toBe(5000);
+    // Override wins over the file.
+    expect(config.retry.backoffFactor).toBe(10);
+    // Untouched field falls back to the default.
+    expect(config.retry.maxConsecutiveFailures).toBe(
+      defaultConfig().retry.maxConsecutiveFailures,
+    );
+    expect(config.maxDurationMs).toBe(90_000);
+  });
 });
 
 describe("bootstrapConfig", () => {

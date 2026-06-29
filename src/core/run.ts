@@ -2,6 +2,7 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
 } from "node:fs";
@@ -9,6 +10,7 @@ import { dirname, isAbsolute, join } from "node:path";
 import { execFileSync } from "node:child_process";
 
 import { buildAgentOutputSchema, type AgentOutput } from "../agents/types.js";
+import type { AgentName, RetryConfig } from "./config.js";
 
 export interface RunInfo {
   runId: string;
@@ -131,4 +133,73 @@ export function appendNotes(
 
 export function readNotes(notesPath: string): string {
   return existsSync(notesPath) ? readFileSync(notesPath, "utf-8") : "";
+}
+
+/**
+ * Everything needed to recreate a run later (`autoralph resume <id>`). Persisted
+ * to `.autoralph/runs/<runId>/run.json` in the repository root so it survives a
+ * board restart and is discoverable independently of in-memory state.
+ */
+export interface RunConfig {
+  runId: string;
+  objective: string;
+  agent: AgentName;
+  model: string;
+  fallbackModels: string[];
+  branch: string;
+  useCurrentBranch: boolean;
+  push: boolean;
+  commitPrefix?: string;
+  stopWhen?: string;
+  maxIterations?: number;
+  maxTokens?: number;
+  maxDurationMs?: number;
+  retry: RetryConfig;
+  /** Absolute path of the isolated worktree, when the run uses one. */
+  worktreePath?: string;
+  createdAt: number;
+}
+
+const RUN_CONFIG_FILENAME = "run.json";
+
+function runsRootDir(repoRoot: string): string {
+  return join(repoRoot, ".autoralph", "runs");
+}
+
+/** Persist a run's full configuration to the repo-root metadata directory. */
+export function writeRunConfig(repoRoot: string, config: RunConfig): void {
+  const dir = join(runsRootDir(repoRoot), config.runId);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, RUN_CONFIG_FILENAME),
+    JSON.stringify(config, null, 2),
+    "utf-8",
+  );
+}
+
+/** Read a persisted run configuration, or null when it does not exist. */
+export function readRunConfig(
+  repoRoot: string,
+  runId: string,
+): RunConfig | null {
+  const path = join(runsRootDir(repoRoot), runId, RUN_CONFIG_FILENAME);
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as RunConfig;
+  } catch {
+    return null;
+  }
+}
+
+/** List every persisted run configuration, newest-first. */
+export function listRunConfigs(repoRoot: string): RunConfig[] {
+  const root = runsRootDir(repoRoot);
+  if (!existsSync(root)) return [];
+  const configs: RunConfig[] = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const config = readRunConfig(repoRoot, entry.name);
+    if (config) configs.push(config);
+  }
+  return configs.sort((a, b) => b.createdAt - a.createdAt);
 }

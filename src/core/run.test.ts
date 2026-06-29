@@ -3,7 +3,16 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { appendNotes, readNotes, setupRun } from "./run.js";
+import {
+  appendNotes,
+  listRunConfigs,
+  readNotes,
+  readRunConfig,
+  setupRun,
+  writeRunConfig,
+  type RunConfig,
+} from "./run.js";
+import { DEFAULT_RETRY } from "./config.js";
 import { makeTempRepo } from "../test-utils.js";
 
 let repo: { dir: string; cleanup: () => void };
@@ -77,5 +86,48 @@ describe("appendNotes / readNotes", () => {
     expect(notes).toContain("did A");
     expect(notes).toContain("change one");
     expect(notes).toContain("learned one");
+  });
+});
+
+describe("run config persistence", () => {
+  function sample(runId: string, objective = "build it"): RunConfig {
+    return {
+      runId,
+      objective,
+      agent: "claude",
+      model: "m",
+      fallbackModels: [],
+      branch: `autoralph/${runId}`,
+      useCurrentBranch: false,
+      push: false,
+      retry: { ...DEFAULT_RETRY },
+      createdAt: Date.now(),
+    };
+  }
+
+  it("round-trips a run config through disk", () => {
+    writeRunConfig(repo.dir, sample("run-x"));
+    const read = readRunConfig(repo.dir, "run-x");
+    expect(read?.objective).toBe("build it");
+    expect(read?.retry.maxConsecutiveFailures).toBe(
+      DEFAULT_RETRY.maxConsecutiveFailures,
+    );
+  });
+
+  it("returns null for an unknown run", () => {
+    expect(readRunConfig(repo.dir, "ghost")).toBeNull();
+  });
+
+  it("lists persisted runs newest-first", () => {
+    writeRunConfig(repo.dir, { ...sample("old"), createdAt: 1 });
+    writeRunConfig(repo.dir, { ...sample("new"), createdAt: 2 });
+    expect(listRunConfigs(repo.dir).map((c) => c.runId)).toEqual([
+      "new",
+      "old",
+    ]);
+  });
+
+  it("lists nothing when no runs exist", () => {
+    expect(listRunConfigs(repo.dir)).toEqual([]);
   });
 });

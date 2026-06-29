@@ -13,12 +13,17 @@ export function slugify(text: string, maxLength = 48): string {
   return slug || "run";
 }
 
-/** Append a short time-based suffix to keep run ids unique within a repo. */
+/**
+ * Append a time-based suffix plus a short random token to keep run ids unique.
+ * The timestamp keeps ids sortable; the random token guards against collisions
+ * when several runs start within the same second (e.g. parallel launches).
+ */
 export function makeRunId(objective: string): string {
   const stamp = new Date()
     .toISOString()
     .replace(/[-:]/g, "")
     .replace(/\.\d+Z$/, "")
     .replace("T", "-");
-  return `${slugify(objective, 32)}-${stamp}`;
+  const rand = Math.random().toString(36).slice(2, 6);
+  return `${slugify(objective, 32)}-${stamp}-${rand}`;
 }

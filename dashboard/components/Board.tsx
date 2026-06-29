@@ -10,6 +10,7 @@ import {
 } from "@/lib/board";
 import { COLUMNS, fmtCount, fmtTime, runColor } from "@/lib/format";
 import HistoryView from "@/components/History";
+import { LaunchForm, StopControls, useControl } from "@/components/Controls";
 
 type ConnState = "connecting" | "live" | "down";
 type View = "live" | "history";
@@ -26,6 +27,7 @@ export default function Dashboard({ boardUrl, demo }: DashboardProps) {
   const [conn, setConn] = useState<ConnState>("connecting");
   const [boardError, setBoardError] = useState<string | null>(null);
   const [view, setView] = useState<View>("live");
+  const { caps, refresh: refreshCaps } = useControl();
   const reveal = useReveal();
 
   useEffect(() => {
@@ -115,6 +117,20 @@ export default function Dashboard({ boardUrl, demo }: DashboardProps) {
           <HistoryView demo={demo} />
         ) : (
           <>
+            {caps.canLaunch || caps.demo ? (
+              <section
+                className="reveal"
+                ref={reveal}
+                aria-label="Start a run"
+              >
+                <div className="section-head">
+                  <h2>Start a run</h2>
+                  <span className="label">control</span>
+                </div>
+                <LaunchForm caps={caps} onLaunched={() => refreshCaps()} />
+              </section>
+            ) : null}
+
             {boardError && !hasRuns ? (
               <div className="notice">
                 <p>
@@ -141,7 +157,16 @@ export default function Dashboard({ boardUrl, demo }: DashboardProps) {
                   </div>
                   <div className="runs">
                     {runs.map((run, i) => (
-                      <RunCard key={run.runId} run={run} color={runColor(i)} />
+                      <RunCard
+                        key={run.runId}
+                        run={run}
+                        color={runColor(i)}
+                        canStop={
+                          run.status === "running" &&
+                          (caps.connected || caps.demo)
+                        }
+                        onStopped={refreshCaps}
+                      />
                     ))}
                   </div>
                 </section>
@@ -205,7 +230,17 @@ function ConnBadge({ state }: { state: ConnState }) {
   );
 }
 
-export function RunCard({ run, color }: { run: RunView; color: string }) {
+export function RunCard({
+  run,
+  color,
+  canStop = false,
+  onStopped,
+}: {
+  run: RunView;
+  color: string;
+  canStop?: boolean;
+  onStopped?: () => void;
+}) {
   const tokens = totalTokens(run.usage);
   const pct = run.maxIterations
     ? Math.min(
@@ -222,7 +257,12 @@ export function RunCard({ run, color }: { run: RunView; color: string }) {
     >
       <div className="run-card__top">
         <span className="run-card__agent">{run.agent}</span>
-        <StatusBadge status={run.status} />
+        <span className="run-card__top-right">
+          {canStop ? (
+            <StopControls runId={run.runId} onStopped={onStopped} />
+          ) : null}
+          <StatusBadge status={run.status} />
+        </span>
       </div>
       <p className="run-card__obj" title={run.objective}>
         {run.objective}
